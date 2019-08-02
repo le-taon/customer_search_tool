@@ -1,97 +1,12 @@
-/* Основной скрипт */
-let login;
-let zepp_url = `http://zeppelin:81/v.bokun/customer_search/`;
-let table_id = 'first_table';
-let table;
-let developer_contact = `\nНапиши автору: v.bokun@tinkoff.ru`
 
-$(document).ready(
-	() => {
-		checkAccess()
-			.then(checking_result => {
-				if(checking_result.has_access) {
-					$('#table_container').empty().append(`<table id="${table_id}"></table>`);
-					drawTable(checking_result.login, table_id);			}
-			});
-	}
-);
-
-/* Функции, отвечающие за авторизацию */
-function checkAccess() {
-	let login;
-
-	// Костыль на время дебага - для части юзеров прописываем чужой логин
-	// Для РГ даем доступ к свободному выбору логина через
-	
-	if (['v.bokun', 'd.e.motoriko', 'b.vasilyev']
-		.includes(USER_LOGIN)
-		) {
-		login = "a.voronkin";
-	} else if (['y.klimikseeva', 'a.komissarova', 'e.petrova3', 'v.kulikov',]
-		.includes(USER_LOGIN)
-		) {
-	    login = prompt('Введи win-логин сотрудника:')
-	} else {
-		login = USER_LOGIN;
-	}
-
-
-	let check_result = fetch(`${zepp_url}logins.json`, {method: 'GET'})
-        .then(response => {
-    		return response.json();
-    	})
-        .then(
-        	valid_logins_obj => {
-	        	let valid_logins = [];
-		    
-		    	for (valid_login in valid_logins_obj) {
-					valid_logins.push(valid_logins_obj[valid_login]);
-				}
-
-		    	let has_access = valid_logins.includes(login);
-
-		    	if (!has_access) {
-					alert(
-						`Для сотрудника ${login} нет данных.` +
-						`\nУверен, что они должны быть, или логин вообще не твой -` +
-						developer_contact
-					);
-				}
-
-				return {
-					login: login, 
-					has_access: has_access
-				};
-			},
-
-        	error => {
-        		alert(
-        			`Не смогли получить данные о том, есть ли у тебя доступ.` +
-					developer_contact +
-					`\nОшибка: ` + error
-        		);
-
-        		return {
-        			login: login,
-        			has_access: false
-        		}
-        	}
-		);
-    return check_result;
-}
-
-/* Функции, отвечающие за отрисовку таблицы */
-function drawTable(login, table_id) {
-
-	fetch(`${zepp_url}${login}_customers.json`, {method: 'GET'})
-	    .then(response => {
-	    	return response.json();
-	    })
-	    .then(
-	    	customers => {
-				let columns = getColumnsArray(customers);
-				table = $(`#${table_id}`).DataTable({
-					data: customers,
+/* Регистрация компонентов Vue */
+Vue.component('customers-table', {
+	props: ['customers'],
+	methods: {
+		drawTable: function () {
+			let columns = getColumnsArray(this.customers);
+				table = $(this.$el).DataTable({
+					data: this.customers,
 					paging: false,
 					searching: true,
 					scrollY: 600,
@@ -107,22 +22,113 @@ function drawTable(login, table_id) {
 
 				table = createColumnFilter(table);
 				
-			    // Отрисовываем кнопки
+			    /* Отрисовываем кнопки
 				$('#buttons').empty();
 
-				table.buttons().container().appendTo($('#buttons'))
-			},
+				table.buttons().container().appendTo($('#buttons'))*/
+		}
+	},
+	template: '<table></table>'
+})
 
-			error => {
-	    		alert(
-	    			`Не смогли получить данные о твоем портфеле.` +
-	    			developer_contact +
-					`\nОшибка: ` + error
-	    		);
-	    	}
-	    );
-}
 
+let vm = new Vue({
+	el: '#vue-body',
+	data: {
+		user: {
+			realLogin: USER_LOGIN,
+			portfolioLogin: USER_LOGIN,
+			hasAccess: false,
+			isSupervisor: false
+		},
+		zeppUrl: `http://zeppelin:81/v.bokun/customer_search/`,
+		table: {
+			id:'first_table',
+			table: ''
+		},
+		developerContacts: `\nНапиши автору: v.bokun@tinkoff.ru`,
+		customers: {}
+	},
+
+	methods: {
+		raiseError: function(text, error) {
+			alert(
+				text +
+				this.developerContacts +
+				(typeof error === 'undefined' ? '' : `\nОшибка: ` + error)
+			);
+		},
+
+		getUser: async function() {
+				
+			let developers = ['v.bokun', 'd.e.motoriko', 'b.vasilyev'];
+			let supervisors = ['y.klimikseeva', 'a.a.komissarova', 'e.petrova3', 'v.kulikov', 'v.borisenkova']
+
+			if (developers.includes(this.user.realLogin)) {
+				this.user.portfolioLogin = "a.voronkin";
+			} else if (supervisors.includes(this.user.realLogin)) {
+				// РГ могут выбрать, под каким сотрудником они заходят
+			    this.user.portfolioLogin = prompt('Введи win-логин сотрудника:');
+			    this.user.isSupervisor = true;
+			} else {
+				this.user.portfolioLogin = this.user.realLogin;
+			}
+
+			await fetch(`${this.zeppUrl}logins.json`)
+		        .then(response => {
+		    		return response.json();
+		    	})
+		        .then(
+		        	validLoginsObj => {
+			        	this.user.hasAccess = false;
+				    
+				    	for (validLoginId in validLoginsObj) {
+							if(validLoginsObj[validLoginId] === this.user.portfolioLogin) {
+								this.user.hasAccess = true;
+								break;
+							}
+						}
+					}, 
+					error => {
+		        		this.raiseError(`Не смогли получить данные о том, есть ли у тебя доступ.`, error)
+		        		this.user.hasAccess = false;
+		        	}
+		        )
+	    },
+
+	    getCustomers: async function() {
+	    	if (!this.user.hasAccess) {
+				this.raiseError(`Для сотрудника ${login} нет данных.`);
+				return;
+			}
+
+	    	await fetch(`${this.zeppUrl}${this.user.portfolioLogin}_customers.json`, {method: 'GET'})
+			    .then(response => {
+			    	return response.json();
+			    })
+			    .then(customers => {
+			    	this.customers = customers;
+			    })
+	    }
+	}
+})
+
+
+/* Основной скрипт */
+$( document ).ready(
+	vm.getUser()
+		.then(() => {
+			if(vm.user.hasAccess) {
+				return vm.getCustomers()
+			}
+		})
+		.then(() => {
+			vm.$refs.c_table.drawTable()
+		}
+		)
+	)
+
+/* Регистрация прочих функций */ 
 function createColumnFilter(table) {
     let header_row = table.columns().header()[0].parentNode;
     let search_row = $('<tr></tr>');
