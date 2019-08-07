@@ -2,36 +2,102 @@
 /* Регистрация компонентов Vue */
 Vue.component('customers-table', {
 	props: ['customers'],
-	methods: {
-		drawTable: function () {
-			let columns = getColumnsArray(this.customers);
-				table = $(this.$el).DataTable({
-					data: this.customers,
-					paging: false,
-					searching: true,
-					scrollY: 600,
-					scrollX: true,
-					buttons: [
-						   'copy', 'excel'
-					],
-					select: true,
-					columns: columns,
-					fixedHeader: false,
-					colReorder: true
-				});
+	
+	computed: {
+		columns: function () {
+			let columns = [];
 
-				table = createColumnFilter(table);
+			for (prop in this.customers[0]) {
+				if(/Наи(б|мень)/.test(prop)) continue;
+
+				column = {};
+
+				column.data = prop;
+				column.title = prop;
+
+				if ([
+					'Дата первой операции',
+					'Дата последней операции',
+					'Дата активации счета'
+				].includes(prop)) {
+					column.render = this.renderColumn;
+				}
 				
-			    /* Отрисовываем кнопки
-				$('#buttons').empty();
+				columns.push(column)
+			}
 
-				table.buttons().container().appendTo($('#buttons'))*/
+			return columns;
+		},
+
+		table: function() {
+			return $(this.$el).children('table').DataTable({
+				data: this.customers,
+				paging: false,
+				searching: true,
+				scrollY: 600,
+				scrollX: true,
+				buttons: [
+				   'copy', 'excel'
+				],
+				select: true,
+				columns: this.columns,
+				fixedHeader: false,
+				colReorder: true
+			});
 		}
 	},
-	template: '<table></table>'
+
+	methods: {
+		renderColumn: function (data, type, row) {
+			if ((data) && (type === 'display' || type === 'filter')) {
+				var d = new Date(data);
+				return Intl.DateTimeFormat().format(d);
+			}
+
+			if (!data && (type === 'display' || type === 'filter')) {
+				return 'Нет операций';
+			}
+
+			return data;
+		},
+
+		createColumnFilter: function() {
+		    let header_row = this.table.columns().header()[0].parentNode;
+		    let search_row = $('<tr></tr>');
+
+		    let table = this.table
+		    table.columns().flatten().each( colId => {
+
+		    	let input = $(
+		    	    	'<input type="text" placeholder="' +
+		    			table.column(colId).header().innerHTML +
+		    			'" /></td>')
+			        .on('input', function () {
+			            table.column( colId )
+			                .search( $(this).val() )
+			                .draw();
+			        });
+
+		    	$('<td></td>')
+		    		.append(input)
+		    	    .appendTo(search_row);
+		    })
+
+		    search_row.appendTo(header_row.parentNode);
+		    this.table.draw();
+		},
+
+
+	},
+
+	template: `
+	<div>
+		<table class="table table-striped"></table>
+	</div>
+	`
 })
 
-
+/* Создание основного экземпляра Vue */
 let vm = new Vue({
 	el: '#vue-body',
 	data: {
@@ -42,10 +108,6 @@ let vm = new Vue({
 			isSupervisor: false
 		},
 		zeppUrl: `http://zeppelin:81/v.bokun/customer_search/`,
-		table: {
-			id:'first_table',
-			table: ''
-		},
 		developerContacts: `\nНапиши автору: v.bokun@tinkoff.ru`,
 		customers: {}
 	},
@@ -119,77 +181,15 @@ $( document ).ready(
 	vm.getUser()
 		.then(() => {
 			if(vm.user.hasAccess) {
-				return vm.getCustomers()
+				return vm.getCustomers();
 			}
 		})
 		.then(() => {
-			vm.$refs.c_table.drawTable()
-		}
-		)
+			vm.$refs.customers_table.createColumnFilter();
+		})
 	)
 
-/* Регистрация прочих функций */ 
-function createColumnFilter(table) {
-    let header_row = table.columns().header()[0].parentNode;
-    let search_row = $('<tr></tr>');
 
-    table.columns().flatten().each( colId => {
-    	let input = $(
-    	    	'<input type="text" placeholder="' +
-    			table.column(colId).header().innerHTML +
-    			'" /></td>')
-	        .on('input', function () {
-	            table
-	                .column( colId )
-	                .search( $(this).val() )
-	                .draw();
-	        });
 
-    	$('<td></td>')
-    		.append(input)
-    	    .appendTo(search_row);
-    })
 
-    search_row.appendTo(header_row.parentNode);
-    table.draw();
 
-    return table;
-}
-
-function getColumnsArray(customers) {
-	let columns = [];
-
-	for (prop in customers[0]) {
-		if(/Наи(б|мень)/.test(prop)) continue;
-
-		column = {};
-
-		column.data = prop;
-		column.title = prop;
-
-		if ([
-			'Дата первой операции',
-			'Дата последней операции',
-			'Дата активации счета'
-		].includes(prop)) {
-			column.render = renderColumn;
-		}
-		
-		columns.push(column)
-	}
-
-	return columns;
-}
-
-function renderColumn(data, type, row) {
-	if ((data) && (type === 'display' || type === 'filter')) {
-		var d = new Date(data);
-		return Intl.DateTimeFormat().format(d);
-	}
-
-	if (!data && (type === 'display' || type === 'filter')) {
-		return 'Нет операций';
-	}
-
-	return data;
-}
